@@ -14,30 +14,53 @@ más ligero que LocalStack (binarios nativos, sin credenciales reales).
   Terraform (`fmt`, `validate`), lint (`tflint`), escaneo de
   misconfiguraciones IaC (`trivy` config scan) y detección de secretos
   (`gitleaks`).
-- `.github/workflows/cd.yml`: en cada push a `main`, levanta Floci en el
-  runner, aplica la infra, hace un smoke test (`describe-cluster`,
-  `kubectl get nodes`) y destruye todo al final — no hay entorno persistente,
-  es un ciclo de validación end-to-end reproducible.
+- `.github/workflows/cd.yml`: en cada push a `main`, aplica la infra contra
+  Floci y hace un smoke test (`describe-cluster`, `kubectl get nodes`). Corre
+  en un **self-hosted runner** en local (ver más abajo), no en un runner de
+  GitHub — así el pipeline despliega contra tu propio Floci local persistente
+  en vez de contra una copia efímera y aislada dentro de una VM de GitHub.
 
 ## Uso en local
 
 ```bash
-# instalar y arrancar Floci
-curl -fsSL https://floci.io/install.sh | sh
-floci start
-eval "$(floci env)"
+# levantar Floci
+docker compose up -d
 
 cd infra
 terraform init
 terraform apply
 
 # smoke test
-aws eks describe-cluster --name devsecops-practice --endpoint-url http://localhost:4566
-aws eks update-kubeconfig --name devsecops-practice --endpoint-url http://localhost:4566
+export AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test AWS_DEFAULT_REGION=us-east-1
+export AWS_ENDPOINT_URL=http://localhost:4566
+aws eks describe-cluster --name devsecops-practice
+aws eks update-kubeconfig --name devsecops-practice
 kubectl get nodes
 
 terraform destroy
 ```
+
+## Self-hosted runner (para que cd.yml despliegue en local)
+
+`cd.yml` necesita hablar con `localhost:4566`, así que corre en un runner
+registrado en la propia máquina en vez de en un runner de GitHub:
+
+```bash
+mkdir -p ~/actions-runner-devsecops && cd ~/actions-runner-devsecops
+# descargar la versión de https://github.com/actions/runner/releases y extraer
+
+TOKEN=$(gh api -X POST repos/<owner>/<repo>/actions/runners/registration-token --jq '.token')
+./config.sh --url https://github.com/<owner>/<repo> --token "$TOKEN" \
+  --name floci-local --labels self-hosted-floci --work _work --unattended
+
+./run.sh   # queda escuchando jobs; usar nohup/systemd para dejarlo en background
+```
+
+El runner reutiliza las herramientas ya instaladas en tu máquina (`terraform`,
+`aws`, `kubectl`) y solo se dispara con jobs que tengan
+`runs-on: [self-hosted-floci]` — en este repo, únicamente `cd.yml`. `ci.yml`
+sigue en runners normales de GitHub (`ubuntu-latest`), ya que corre también
+en PRs y no queremos ejecutar código de PRs arbitrarios en la propia máquina.
 
 ## Notas
 
