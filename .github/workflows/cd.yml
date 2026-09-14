@@ -1,0 +1,71 @@
+name: CD (smoke test contra Floci)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/cd.yml"
+
+permissions:
+  contents: read
+
+env:
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_ENDPOINT_URL: http://localhost:4566
+
+jobs:
+  deploy:
+    name: Apply + smoke test + destroy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Instalar y arrancar Floci
+        run: |
+          curl -fsSL https://floci.io/install.sh | sh
+          floci start
+          eval "$(floci env)"
+
+      - name: Esperar a que Floci esté listo
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:4566/_floci/health > /dev/null; then
+              echo "Floci listo"
+              exit 0
+            fi
+            echo "Esperando a Floci ($i)..."
+            sleep 2
+          done
+          echo "Floci no respondió a tiempo" >&2
+          exit 1
+
+      - name: terraform init
+        working-directory: infra
+        run: terraform init
+
+      - name: terraform apply
+        working-directory: infra
+        run: terraform apply -auto-approve
+
+      - name: Smoke test - describe cluster
+        run: |
+          CLUSTER_NAME=$(terraform -chdir=infra output -raw cluster_name)
+          aws eks describe-cluster --name "$CLUSTER_NAME" --endpoint-url http://localhost:4566
+
+      - name: Smoke test - kubectl get nodes
+        run: |
+          CLUSTER_NAME=$(terraform -chdir=infra output -raw cluster_name)
+          aws eks update-kubeconfig --name "$CLUSTER_NAME" --endpoint-url http://localhost:4566
+          kubectl get nodes
+
+      - name: terraform destroy
+        if: always()
+        working-directory: infra
+        run: terraform destroy -auto-approve
