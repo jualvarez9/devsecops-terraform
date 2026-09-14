@@ -1,0 +1,24 @@
+name: Cost estimate (c3x)
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  c3x:
+    name: c3x estimate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: c3xdev/c3x@v0
+        with:
+          path: infra
+          comment: true
+          # Aviso si el total mensual estimado supera este umbral (ej. si por
+          # error se cambia a un tipo de instancia/servicio caro).
+          budget: "150"
