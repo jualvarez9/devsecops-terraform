@@ -7,11 +7,25 @@ resource "aws_eks_cluster" "main" {
   name     = var.cluster_name
   role_arn = aws_iam_role.cluster.arn
 
+  # AWS-0040 (acceso público habilitado): excepción justificada — este
+  # proyecto es un laboratorio de práctica contra Floci en local/CI, sin
+  # bastion/VPN, así que necesitamos acceso público al endpoint. Se mitiga
+  # acotando public_access_cidrs (AWS-0041) en vez de dejarlo abierto a
+  # 0.0.0.0/0, y complementando con acceso privado dentro de la VPC.
+  #trivy:ignore:AWS-0040
   vpc_config {
     subnet_ids              = concat(aws_subnet.public[*].id, aws_subnet.private[*].id)
     security_group_ids      = [aws_security_group.cluster.id]
     endpoint_public_access  = true
-    endpoint_private_access = false
+    endpoint_private_access = true
+    public_access_cidrs     = var.cluster_endpoint_public_access_cidrs
+  }
+
+  encryption_config {
+    provider {
+      key_arn = aws_kms_key.eks_secrets.arn
+    }
+    resources = ["secrets"]
   }
 
   tags = var.tags
