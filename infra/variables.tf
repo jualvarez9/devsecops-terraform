@@ -1,7 +1,7 @@
 variable "region" {
   description = "Región AWS a simular"
   type        = string
-  default     = "us-easttt-1"
+  default     = "us-east-1"
 }
 
 variable "floci_endpoint" {
@@ -36,8 +36,4 @@ variable "tags" {
     Environment = "local-floci"
     ManagedBy   = "terraform"
   }
-}
-
-variable "prueba_no_usada" {
-  type = string
 }
