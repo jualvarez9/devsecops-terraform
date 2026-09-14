@@ -15,10 +15,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Sin "budget" aquí a propósito: si se lo pasamos a la action y se
+      # supera, salta el resto de sus pasos internos (incluido el comentario
+      # en el PR) y solo se ve el check en rojo sin el detalle del coste.
+      # Comentamos siempre, y el gate de presupuesto lo hacemos aparte.
       - uses: c3xdev/c3x@v0
         with:
           path: infra
           comment: true
-          # Aviso si el total mensual estimado supera este umbral (ej. si por
-          # error se cambia a un tipo de instancia/servicio caro).
-          budget: "150"
+
+      - name: Budget gate ($150/mo)
+        run: |
+          total=$(c3x estimate --path infra --format json | python3 -c "import json,sys; print(json.load(sys.stdin)['project_total'])")
+          echo "Total estimado: \$${total}/mo"
+          if awk -v t="$total" 'BEGIN { exit !(t > 150) }'; then
+            echo "::error::Coste estimado (\$${total}/mo) supera el budget de \$150/mo"
+            exit 1
+          fi
