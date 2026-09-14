@@ -26,7 +26,7 @@ resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.main.id
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
   availability_zone       = data.aws_availability_zones.available.names[count.index]
-  map_public_ip_on_launch = true
+  map_public_ip_on_launch = false
 
   tags = merge(var.tags, {
     Name                                        = "${var.cluster_name}-public-${count.index}"
@@ -74,11 +74,14 @@ resource "aws_security_group" "cluster" {
   description = "Security group para el control plane del cluster EKS"
   vpc_id      = aws_vpc.main.id
 
+  # Comunicación control plane <-> nodos, y hacia los VPC endpoints
+  # (ECR/S3/STS, ver vpc_endpoints.tf) — todo dentro de la propia VPC,
+  # sin necesidad de egress a 0.0.0.0/0.
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = [var.vpc_cidr]
   }
 
   tags = merge(var.tags, {

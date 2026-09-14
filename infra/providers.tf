@@ -14,5 +14,6 @@ provider "aws" {
     eks = var.floci_endpoint
     iam = var.floci_endpoint
     sts = var.floci_endpoint
+    kms = var.floci_endpoint
   }
 }
