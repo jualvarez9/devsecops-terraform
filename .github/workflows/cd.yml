@@ -1,4 +1,4 @@
-name: CD (smoke test contra Floci)
+name: CD (despliegue contra Floci local)
 
 on:
   push:
@@ -18,8 +18,11 @@ env:
 
 jobs:
   deploy:
-    name: Apply + smoke test + destroy
-    runs-on: ubuntu-latest
+    name: Apply + smoke test
+    # Self-hosted runner registrado en el propio PC (ver README): corre en
+    # local para poder hablar con Floci en localhost:4566 (docker-compose),
+    # cosa que un runner ubuntu-latest de GitHub no puede hacer.
+    runs-on: [self-hosted-floci]
     steps:
       - uses: actions/checkout@v4
 
@@ -27,20 +30,14 @@ jobs:
         with:
           terraform_version: "1.9.8"
 
-      - name: Instalar y arrancar Floci
+      - name: Comprobar que Floci esté listo
         run: |
-          curl -fsSL https://floci.io/install.sh | sh
-          floci start
-          eval "$(floci env)"
-
-      - name: Esperar a que Floci esté listo
-        run: |
-          for i in $(seq 1 30); do
+          for i in $(seq 1 15); do
             if curl -sf http://localhost:4566/_floci/health > /dev/null; then
               echo "Floci listo"
               exit 0
             fi
-            echo "Esperando a Floci ($i)..."
+            echo "Esperando a Floci ($i)... ¿está arrancado con 'docker compose up -d'?"
             sleep 2
           done
           echo "Floci no respondió a tiempo" >&2
@@ -57,15 +54,10 @@ jobs:
       - name: Smoke test - describe cluster
         run: |
           CLUSTER_NAME=$(terraform -chdir=infra output -raw cluster_name)
-          aws eks describe-cluster --name "$CLUSTER_NAME" --endpoint-url http://localhost:4566
+          aws eks describe-cluster --name "$CLUSTER_NAME"
 
       - name: Smoke test - kubectl get nodes
         run: |
           CLUSTER_NAME=$(terraform -chdir=infra output -raw cluster_name)
-          aws eks update-kubeconfig --name "$CLUSTER_NAME" --endpoint-url http://localhost:4566
+          aws eks update-kubeconfig --name "$CLUSTER_NAME"
           kubectl get nodes
-
-      - name: terraform destroy
-        if: always()
-        working-directory: infra
-        run: terraform destroy -auto-approve
